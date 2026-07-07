@@ -19,6 +19,8 @@ const TYPE_LABEL: Record<Room['type'], string> = {
 export default function ChatView({ client, room }: Props): React.JSX.Element {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   // Whether the view is pinned to the newest message (autoscroll on incoming).
   const stick = useRef(true);
@@ -30,8 +32,17 @@ export default function ChatView({ client, room }: Props): React.JSX.Element {
     let alive = true;
     stick.current = true;
     void (async () => {
-      const history = await client.getMessages(room.id);
-      if (alive) setMessages(history);
+      try {
+        setHistoryError(null);
+        const history = await client.getMessages(room.id, { limit: 30 });
+        if (alive) setMessages(history);
+      } catch (err) {
+        // 히스토리 조회 실패는 실시간 수신/전송과 별개이므로 화면만 유지합니다.
+        if (alive) {
+          setHistoryError(err instanceof Error ? err.message : String(err));
+          setMessages([]);
+        }
+      }
     })();
     return () => {
       alive = false;
@@ -86,7 +97,11 @@ export default function ChatView({ client, room }: Props): React.JSX.Element {
     setDraft('');
     if (!trimmed) return;
     stick.current = true;
-    void client.sendMessage(room.id, trimmed);
+    setSendError(null);
+    void client.sendMessage(room.id, trimmed).catch((err) => {
+      // 전송 실패는 프로세스를 죽이지 않고 현재 채팅 화면에만 표시합니다.
+      setSendError(err instanceof Error ? err.message : String(err));
+    });
   };
 
   const visible = messages.slice(scrollTop, scrollTop + VISIBLE);
@@ -99,10 +114,11 @@ export default function ChatView({ client, room }: Props): React.JSX.Element {
         <Text bold color="yellow">
           {TYPE_LABEL[room.type]} {room.name}
         </Text>
-        <Text dimColor>Esc 뒤로 · ↑/↓ 스크롤</Text>
+        <Text dimColor>Tab 방 전환 · Esc 뒤로 · ↑/↓ 스크롤</Text>
       </Box>
 
       <Box flexDirection="column" marginTop={1} minHeight={VISIBLE}>
+        {historyError ? <Text color="yellow">이전 메시지 로드 실패: {historyError}</Text> : null}
         {hiddenAbove > 0 ? <Text dimColor>↑ 이전 메시지 {hiddenAbove}개</Text> : null}
         {visible.map((m) => (
           <Text key={m.id} color={m.isMine ? 'green' : undefined}>
@@ -125,6 +141,11 @@ export default function ChatView({ client, room }: Props): React.JSX.Element {
           placeholder="메시지 입력 후 Enter"
         />
       </Box>
+      {sendError ? (
+        <Box marginTop={1}>
+          <Text color="red">전송 오류: {sendError}</Text>
+        </Box>
+      ) : null}
     </Box>
   );
 }

@@ -1,18 +1,16 @@
-// Assert-based self-check for the real protocol layer — NO network, NO account.
-// This is what the Advisor runs to verify Worker P without a live login.
-// Run with: tsx scripts/protocol-selfcheck.ts
+// 실제 프로토콜 레이어의 shape/persistence를 확인하는 self-check입니다.
+// 네트워크와 계정 없이 실행되므로 live 로그인 전에도 안전하게 돌릴 수 있습니다.
+// 실행: tsx scripts/protocol-selfcheck.ts
 //
-// It proves:
-//  1. node-kakao's CJS import + NodeKakaoClient wiring construct without crashing,
-//     and expose the KakaoClient surface (EventEmitter + the 5 methods).
-//  2. The auth persistence helpers round-trip and the device UUID is stable,
-//     using TEMP files so the project's real auth.json/.device-uuid are untouched.
+// 확인 항목:
+//  1. ForgeKakaoClient가 EventEmitter와 KakaoClient 메서드를 노출하는지 확인합니다.
+//  2. TEMP 파일로 Credential 저장/로드와 device UUID 안정성을 확인합니다.
 import assert from 'node:assert';
 import { EventEmitter } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync, unlinkSync } from 'node:fs';
-import { NodeKakaoClient } from '../src/kakao/node-kakao.js';
+import { ForgeKakaoClient } from '../src/kakao/forge-client.js';
 import {
   NodeKakaoAuth,
   getOrCreateDeviceUUID,
@@ -23,16 +21,16 @@ import {
 import type { Credential } from '../src/kakao/client.js';
 
 async function main(): Promise<void> {
-  // --- 1. Client construction + shape ------------------------------------
-  const client = new NodeKakaoClient();
-  assert(client instanceof EventEmitter, 'NodeKakaoClient must be an EventEmitter');
+  // --- 1. 클라이언트 생성 + shape -----------------------------------------
+  const client = new ForgeKakaoClient();
+  assert(client instanceof EventEmitter, 'ForgeKakaoClient must be an EventEmitter');
   const methods = ['login', 'listRooms', 'getMessages', 'sendMessage', 'disconnect'] as const;
   for (const m of methods) {
-    assert(typeof client[m] === 'function', `NodeKakaoClient missing method: ${m}`);
+    assert(typeof client[m] === 'function', `ForgeKakaoClient missing method: ${m}`);
   }
   console.log('client: EventEmitter + KakaoClient methods (login/listRooms/getMessages/sendMessage/disconnect) OK');
 
-  // --- 2. Auth persistence against TEMP files ----------------------------
+  // --- 2. TEMP 파일 기반 인증 persistence --------------------------------
   const stamp = `${process.pid}-${Date.now()}`;
   const authPath = join(tmpdir(), `kakao-cli-auth-${stamp}.json`);
   const uuidPath = join(tmpdir(), `kakao-cli-uuid-${stamp}`);

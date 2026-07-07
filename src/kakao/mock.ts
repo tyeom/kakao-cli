@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import type { Credential, KakaoClient, Message, Room } from './client.js';
 
 // ---------------------------------------------------------------------------
-// MockKakaoClient — an in-memory stand-in for the real node-kakao adapter.
+// MockKakaoClient — an in-memory stand-in for the real QR/V2SL LOCO adapter.
 // The ink UI (Wave 2, Worker U) is developed and tested entirely against this,
 // so it deliberately exercises every UI path: mixed room types, unread badges,
 // stable per-room history, live incoming messages, and outgoing echoes.

@@ -3,13 +3,48 @@
   "version": "0.1.0",
   "description": "Terminal (CUI) KakaoTalk client built with ink (React for CLI)",
   "type": "module",
-  "private": true,
+  "private": false,
+  "license": "UNLICENSED",
+  "keywords": [
+    "kakao",
+    "kakaotalk",
+    "cli",
+    "terminal",
+    "ink"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "packageManager": "pnpm@10.32.1",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ],
+    "ignoredBuiltDependencies": [
+      "core-js"
+    ]
+  },
   "bin": {
-    "kakao-cli": "./src/cli.tsx"
+    "kakao-cli": "./dist/cli.cjs"
   },
   "scripts": {
+    "build": "node scripts/build-package.mjs",
+    "prepack": "pnpm run build",
+    "pack:dry": "npm pack --dry-run",
+    "publish:npm": "pnpm run build && npm publish --access public",
     "dev": "tsx watch src/cli.tsx",
     "start": "tsx src/cli.tsx",
+    "start:live": "tsx src/cli.tsx --live",
+    "start:bundle": "node dist/cli.cjs",
+    "start:bundle:live": "node dist/cli.cjs --live",
     "typecheck": "tsc --noEmit",
     "smoke": "tsx scripts/mock-smoke.ts",
     "login": "tsx scripts/login-test.ts",
@@ -17,17 +52,21 @@
     "check:ui": "tsx scripts/ui-check.ts"
   },
   "dependencies": {
+    "bson": "^7.3.1",
     "ink": "^7.1.0",
     "ink-select-input": "^6",
     "ink-spinner": "^5",
     "ink-text-input": "^6",
-    "node-kakao": "^4.5.0",
+    "qrcode-terminal": "^0.12.0",
     "react": "^19.2.0"
   },
   "devDependencies": {
     "@types/node": "^24",
+    "@types/qrcode-terminal": "^0.12.2",
     "@types/react": "^19.2.0",
+    "esbuild": "^0.28.1",
     "ink-testing-library": "^4.0.0",
+    "javascript-obfuscator": "^5.4.3",
     "tsx": "^4",
     "typescript": "^5"
   }

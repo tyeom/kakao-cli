@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Room, RoomType } from '../kakao/client.js';
 
@@ -6,6 +6,11 @@ interface Props {
   rooms: Room[];
   unread: Record<string, number>;
   onOpen: (roomId: string) => void;
+  title?: string;
+  footer?: string;
+  initialRoomId?: string | null;
+  activeRoomId?: string | null;
+  onCancel?: () => void;
 }
 
 const VISIBLE = 8; // window cap for long lists
@@ -33,11 +38,20 @@ function relTime(at?: number): string {
   return `${Math.floor(hr / 24)}일 전`;
 }
 
-export default function RoomList({ rooms, unread, onOpen }: Props): React.JSX.Element {
-  const [index, setIndex] = useState(0);
-
+export default function RoomList({
+  rooms,
+  unread,
+  onOpen,
+  title = '채팅',
+  footer = '↑/↓ 이동 · Enter 열기 · q 종료',
+  initialRoomId,
+  activeRoomId,
+  onCancel,
+}: Props): React.JSX.Element {
   // Sort by most-recent activity; clamp selection into range.
-  const sorted = [...rooms].sort((a, b) => (b.lastAt ?? 0) - (a.lastAt ?? 0));
+  const sorted = useMemo(() => [...rooms].sort((a, b) => (b.lastAt ?? 0) - (a.lastAt ?? 0)), [rooms]);
+  const initialIndex = initialRoomId ? sorted.findIndex((room) => room.id === initialRoomId) : 0;
+  const [index, setIndex] = useState(Math.max(0, initialIndex));
   const sel = Math.min(index, Math.max(0, sorted.length - 1));
   const totalUnread = Object.values(unread).reduce((sum, n) => sum + n, 0);
 
@@ -48,6 +62,8 @@ export default function RoomList({ rooms, unread, onOpen }: Props): React.JSX.El
     else if (key.return) {
       const room = sorted[sel];
       if (room) onOpen(room.id);
+    } else if (key.escape && onCancel) {
+      onCancel();
     }
   });
 
@@ -59,7 +75,7 @@ export default function RoomList({ rooms, unread, onOpen }: Props): React.JSX.El
     <Box flexDirection="column" padding={1}>
       <Box justifyContent="space-between">
         <Text bold color="yellow">
-          채팅
+          {title}
         </Text>
         <Text color={totalUnread > 0 ? 'red' : 'gray'}>합계: {totalUnread} 읽지 않음</Text>
       </Box>
@@ -68,6 +84,7 @@ export default function RoomList({ rooms, unread, onOpen }: Props): React.JSX.El
           const n = unread[room.id] ?? 0;
           const marker = typeMarker(room.type);
           const active = room.id === sorted[sel]?.id;
+          const current = room.id === activeRoomId;
           return (
             <Box key={room.id}>
               <Text color={active ? 'cyan' : undefined}>{active ? '❯ ' : '  '}</Text>
@@ -78,6 +95,7 @@ export default function RoomList({ rooms, unread, onOpen }: Props): React.JSX.El
               )}
               <Text color={marker.color}>{marker.label} </Text>
               <Text bold={active}>{room.name}</Text>
+              {current ? <Text color="green"> 현재</Text> : null}
               <Text dimColor>
                 {'  '}
                 {room.lastMessage ?? ''} · {relTime(room.lastAt)}
@@ -87,7 +105,7 @@ export default function RoomList({ rooms, unread, onOpen }: Props): React.JSX.El
         })}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>↑/↓ 이동 · Enter 열기 · q 종료</Text>
+        <Text dimColor>{footer}</Text>
       </Box>
     </Box>
   );

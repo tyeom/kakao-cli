@@ -1,5 +1,5 @@
 // Assert-based self-check of the mock adapter — no test framework.
-// Run with: npm run smoke   (tsx scripts/mock-smoke.ts)
+// 실행: pnpm run smoke   (tsx scripts/mock-smoke.ts)
 import assert from 'node:assert';
 import { MockKakaoClient } from '../src/kakao/mock.js';
 import type { Message } from '../src/kakao/client.js';
