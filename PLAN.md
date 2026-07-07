@@ -39,10 +39,11 @@ kakao-cli/
    ├─ cli.tsx          # entry (#!/usr/bin/env node) → render(<App/>); picks backend
    ├─ app.tsx          # view router (login→rooms→chat) + KakaoClient context/state
    ├─ kakao/
-   │  ├─ client.ts     # KakaoClient interface + Room/Message/Credential types (CONTRACT)
-   │  ├─ mock.ts       # MockKakaoClient — fake rooms/messages + timer-emitted events
-   │  ├─ node-kakao.ts # NodeKakaoClient — real adapter over node-kakao TalkClient
-   │  └─ auth.ts       # deviceUUID + token persistence (auth.json); device-registration flow
+   │  ├─ client.ts     # KakaoClient + AuthProvider interfaces + Room/Message/Credential (CONTRACT)
+   │  ├─ mock.ts       # MockKakaoClient — fake rooms/messages + timer-emitted events [Wave 1]
+   │  ├─ mock-auth.ts  # MockAuthProvider — accepts any creds; drives login UI on mock [Worker U]
+   │  ├─ node-kakao.ts # NodeKakaoClient — real adapter over node-kakao TalkClient [Worker P]
+   │  └─ auth.ts       # NodeKakaoAuth — deviceUUID + token persistence; device registration [Worker P]
    └─ views/
       ├─ Login.tsx     # email/password + passcode entry
       ├─ RoomList.tsx  # rooms + open chats, unread badges (ink-select-input)
@@ -78,19 +79,26 @@ export interface Credential {
   accessToken: string;
   refreshToken: string;
 }
-// Events: 'chat'(Message) | 'unread'(roomId,count) | 'room-update'(Room)
+// Events: 'chat'(Message) | 'room-update'(Room)
 //         | 'connected'() | 'disconnected'(reason) | 'error'(Error)
 export interface KakaoClient extends EventEmitter {
   login(cred: Credential): Promise<void>;
   listRooms(): Promise<Room[]>;
   getMessages(roomId: string, opts?: { limit?: number; before?: string }): Promise<Message[]>;
   sendMessage(roomId: string, text: string): Promise<void>;
-  getUnread(roomId: string): number;
   disconnect(): Promise<void>;
+}
+export interface AuthProvider {           // login seam (mock-auth.ts | auth.ts)
+  loadSaved(): Promise<Credential | null>;
+  login(input: { email: string; password: string;
+                 onPasscodeNeeded: () => Promise<string> }): Promise<Credential>;
+  logout(): Promise<void>;
 }
 ```
 
-Backend selection in `cli.tsx`: `KAKAO_BACKEND=live` → node-kakao, else mock (default).
+**Unread is UI-owned** (not on the client): `Room.unreadCount` is the initial server count at connect; the UI seeds from it, increments on `'chat'` to a non-open room, resets to 0 on open. (Refined at the Wave-1 gate — removed `getUnread`/`'unread'` to kill a two-sources-of-truth ambiguity.)
+
+Backend selection in `app.tsx` (a `getBackend()` returning a `{client, auth}` pair): `KAKAO_BACKEND=live` → node-kakao, else mock (default). Worker U wires the mock pair; Advisor adds the live pair at integration (keeps U's typecheck independent of Worker P's files).
 
 ## Delegation plan (waves, with Advisor verification gates)
 

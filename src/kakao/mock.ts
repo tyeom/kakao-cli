@@ -8,8 +8,9 @@ import type { Credential, KakaoClient, Message, Room } from './client.js';
 // stable per-room history, live incoming messages, and outgoing echoes.
 //
 // Emits the same events as the contract:
-//   'chat'(Message) | 'unread'(roomId, count) | 'room-update'(Room)
+//   'chat'(Message) | 'room-update'(Room)
 //   'connected'() | 'disconnected'(reason)
+// Unread is UI-owned; the mock only carries each room's INITIAL unreadCount.
 // ---------------------------------------------------------------------------
 
 interface Participant {
@@ -136,15 +137,8 @@ function membersFor(room: Room | undefined): Participant[] {
 export class MockKakaoClient extends EventEmitter implements KakaoClient {
   private readonly rooms: Room[] = buildRooms();
   private readonly logs = new Map<string, Message[]>();
-  private readonly unread = new Map<string, number>();
-  private activeRoomId: string | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private runtimeSeq = 0;
-
-  constructor() {
-    super();
-    for (const room of this.rooms) this.unread.set(room.id, room.unreadCount);
-  }
 
   async login(_cred: Credential): Promise<void> {
     this.startRealtime();
@@ -154,7 +148,7 @@ export class MockKakaoClient extends EventEmitter implements KakaoClient {
   }
 
   async listRooms(): Promise<Room[]> {
-    return this.rooms.map((room) => ({ ...room, unreadCount: this.unread.get(room.id) ?? 0 }));
+    return this.rooms.map((room) => ({ ...room }));
   }
 
   async getMessages(
@@ -162,18 +156,6 @@ export class MockKakaoClient extends EventEmitter implements KakaoClient {
     opts?: { limit?: number; before?: string },
   ): Promise<Message[]> {
     const log = this.ensureLog(roomId);
-
-    // Opening a room marks it active and clears its unread badge.
-    this.activeRoomId = roomId;
-    if ((this.unread.get(roomId) ?? 0) !== 0) {
-      this.unread.set(roomId, 0);
-      const room = this.rooms.find((r) => r.id === roomId);
-      if (room) {
-        room.unreadCount = 0;
-        this.emit('room-update', { ...room });
-      }
-      this.emit('unread', roomId, 0);
-    }
 
     let slice = log;
     if (opts?.before) {
@@ -206,10 +188,6 @@ export class MockKakaoClient extends EventEmitter implements KakaoClient {
       this.emit('chat', msg);
       if (room) this.emit('room-update', { ...room });
     });
-  }
-
-  getUnread(roomId: string): number {
-    return this.unread.get(roomId) ?? 0;
   }
 
   async disconnect(): Promise<void> {
@@ -279,13 +257,6 @@ export class MockKakaoClient extends EventEmitter implements KakaoClient {
     room.lastMessage = msg.text;
     room.lastAt = msg.at;
     this.emit('chat', msg);
-
-    if (room.id !== this.activeRoomId) {
-      const next = (this.unread.get(room.id) ?? 0) + 1;
-      this.unread.set(room.id, next);
-      room.unreadCount = next;
-      this.emit('unread', room.id, next);
-    }
     this.emit('room-update', { ...room });
   }
 }

@@ -11,7 +11,10 @@
     "dev": "tsx watch src/cli.tsx",
     "start": "tsx src/cli.tsx",
     "typecheck": "tsc --noEmit",
-    "smoke": "tsx scripts/mock-smoke.ts"
+    "smoke": "tsx scripts/mock-smoke.ts",
+    "login": "tsx scripts/login-test.ts",
+    "check:protocol": "tsx scripts/protocol-selfcheck.ts",
+    "check:ui": "tsx scripts/ui-check.ts"
   },
   "dependencies": {
     "ink": "^7.1.0",
@@ -24,6 +27,7 @@
   "devDependencies": {
     "@types/node": "^24",
     "@types/react": "^19.2.0",
+    "ink-testing-library": "^4.0.0",
     "tsx": "^4",
     "typescript": "^5"
   }
