@@ -1,0 +1,30 @@
+{
+  "name": "kakao-cli",
+  "version": "0.1.0",
+  "description": "Terminal (CUI) KakaoTalk client built with ink (React for CLI)",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "kakao-cli": "./src/cli.tsx"
+  },
+  "scripts": {
+    "dev": "tsx watch src/cli.tsx",
+    "start": "tsx src/cli.tsx",
+    "typecheck": "tsc --noEmit",
+    "smoke": "tsx scripts/mock-smoke.ts"
+  },
+  "dependencies": {
+    "ink": "^7.1.0",
+    "ink-select-input": "^6",
+    "ink-spinner": "^5",
+    "ink-text-input": "^6",
+    "node-kakao": "^4.5.0",
+    "react": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@types/react": "^19.2.0",
+    "tsx": "^4",
+    "typescript": "^5"
+  }
+}
