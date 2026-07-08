@@ -7,28 +7,6 @@ settings:
 importers:
 
   .:
-    dependencies:
-      bson:
-        specifier: ^7.3.1
-        version: 7.3.1
-      ink:
-        specifier: ^7.1.0
-        version: 7.1.0(@types/react@19.2.17)(react@19.2.7)
-      ink-select-input:
-        specifier: ^6
-        version: 6.2.0(ink@7.1.0(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
-      ink-spinner:
-        specifier: ^5
-        version: 5.0.0(ink@7.1.0(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
-      ink-text-input:
-        specifier: ^6
-        version: 6.0.0(ink@7.1.0(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
-      qrcode-terminal:
-        specifier: ^0.12.0
-        version: 0.12.0
-      react:
-        specifier: ^19.2.0
-        version: 19.2.7
     devDependencies:
       '@types/node':
         specifier: ^24
@@ -39,15 +17,33 @@ importers:
       '@types/react':
         specifier: ^19.2.0
         version: 19.2.17
+      bson:
+        specifier: ^7.3.1
+        version: 7.3.1
       esbuild:
         specifier: ^0.28.1
         version: 0.28.1
+      ink:
+        specifier: ^7.1.0
+        version: 7.1.0(@types/react@19.2.17)(react@19.2.7)
+      ink-select-input:
+        specifier: ^6
+        version: 6.2.0(ink@7.1.0(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
+      ink-spinner:
+        specifier: ^5
+        version: 5.0.0(ink@7.1.0(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
       ink-testing-library:
         specifier: ^4.0.0
         version: 4.0.0(@types/react@19.2.17)
       javascript-obfuscator:
         specifier: ^5.4.3
         version: 5.4.3
+      qrcode-terminal:
+        specifier: ^0.12.0
+        version: 0.12.0
+      react:
+        specifier: ^19.2.0
+        version: 19.2.7
       tsx:
         specifier: ^4
         version: 4.23.0
@@ -595,13 +591,6 @@ packages:
       '@types/react':
         optional: true
 
-  ink-text-input@6.0.0:
-    resolution: {integrity: sha512-Fw64n7Yha5deb1rHY137zHTAbSTNelUKuB5Kkk2HACXEtwIHBCf9OH2tP/LQ9fRYTl1F0dZgbW0zPnZk6FA9Lw==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      ink: '>=5'
-      react: '>=18'
-
   ink@7.1.0:
     resolution: {integrity: sha512-VWE6/yeLtFCJBNLflyI2OSylyXK1Rc24LuXup8Qt+icwkmmycFNdbn8IkSp6Frc0h1iA0NOvvi1ajW44U/w3Qg==}
     engines: {node: '>=22'}
@@ -872,10 +861,6 @@ packages:
   type-check@0.3.2:
     resolution: {integrity: sha512-ZCmOJdvOWDBYJlzAoFkC+Q0+bUyEOS1ltgp1MGU03fqHG+dbi9tBFU2Rd9QKiDZFAYrhPh2JUf7rZRIuHRKtOg==}
     engines: {node: '>= 0.8.0'}
-
-  type-fest@4.41.0:
-    resolution: {integrity: sha512-TeTSQ6H5YHvpqVwBRcnLDCBnDOHWYu7IvGbHT6N8AOymcr9PJGjc1GTtiWZTYg0NCgYwvnYWEkVChQAr9bjfwA==}
-    engines: {node: '>=16'}
 
   type-fest@5.8.0:
     resolution: {integrity: sha512-YGYEVz3Fm5iy/AybuA0oyNFq7H4CgQNfRp/qfe8nurE1kuCeNm3/vfm9X4Mtl+qLyaKJUh5xrFZwogr41SMjYA==}
@@ -1413,13 +1398,6 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.17
 
-  ink-text-input@6.0.0(ink@7.1.0(@types/react@19.2.17)(react@19.2.7))(react@19.2.7):
-    dependencies:
-      chalk: 5.6.2
-      ink: 7.1.0(@types/react@19.2.17)(react@19.2.7)
-      react: 19.2.7
-      type-fest: 4.41.0
-
   ink@7.1.0(@types/react@19.2.17)(react@19.2.7):
     dependencies:
       '@alcalzone/ansi-tokenize': 0.3.0
@@ -1714,8 +1692,6 @@ snapshots:
   type-check@0.3.2:
     dependencies:
       prelude-ls: 1.1.2
-
-  type-fest@4.41.0: {}
 
   type-fest@5.8.0:
     dependencies:

@@ -6,16 +6,18 @@ interface Props {
   rooms: Room[];
   unread: Record<string, number>;
   onOpen: (roomId: string) => void;
+  focused?: boolean;
   title?: string;
   footer?: string;
+  emptyText?: string;
   initialRoomId?: string | null;
   activeRoomId?: string | null;
   onCancel?: () => void;
 }
 
-const VISIBLE = 8; // window cap for long lists
+const VISIBLE = 6; // 긴 목록에서 한 번에 렌더링할 행 수입니다.
 
-// A short room-type marker; open chats are visually distinct.
+// 방 타입은 짧은 한글 표식으로 구분합니다.
 function typeMarker(type: RoomType): { label: string; color: string } {
   switch (type) {
     case 'open':
@@ -25,6 +27,12 @@ function typeMarker(type: RoomType): { label: string; color: string } {
     default:
       return { label: '[1:1]', color: 'gray' };
   }
+}
+
+function clipText(value: string, max: number): string {
+  if (value.length <= max) return value;
+  if (max <= 3) return value.slice(0, max);
+  return `${value.slice(0, max - 3)}...`;
 }
 
 function relTime(at?: number): string {
@@ -42,20 +50,23 @@ export default function RoomList({
   rooms,
   unread,
   onOpen,
+  focused = true,
   title = '채팅',
   footer = '↑/↓ 이동 · Enter 열기 · q 종료',
+  emptyText = '표시할 항목이 없습니다.',
   initialRoomId,
   activeRoomId,
   onCancel,
 }: Props): React.JSX.Element {
-  // Sort by most-recent activity; clamp selection into range.
+  // 1단계: 최근 활동 순으로 정렬하고, 선택 인덱스가 목록 범위를 벗어나지 않게 보정합니다.
   const sorted = useMemo(() => [...rooms].sort((a, b) => (b.lastAt ?? 0) - (a.lastAt ?? 0)), [rooms]);
   const initialIndex = initialRoomId ? sorted.findIndex((room) => room.id === initialRoomId) : 0;
   const [index, setIndex] = useState(Math.max(0, initialIndex));
   const sel = Math.min(index, Math.max(0, sorted.length - 1));
-  const totalUnread = Object.values(unread).reduce((sum, n) => sum + n, 0);
+  const totalUnread = rooms.reduce((sum, room) => sum + (unread[room.id] ?? 0), 0);
 
   useInput((_input, key) => {
+    if (!focused || sorted.length === 0) return;
     if (key.upArrow) setIndex((i) => Math.max(0, Math.min(i, sorted.length - 1) - 1));
     else if (key.downArrow)
       setIndex((i) => Math.min(sorted.length - 1, Math.min(i, sorted.length - 1) + 1));
@@ -67,39 +78,46 @@ export default function RoomList({
     }
   });
 
-  // Window the visible slice so the selected row stays on screen.
-  const start = Math.max(0, Math.min(sel - Math.floor(VISIBLE / 2), sorted.length - VISIBLE));
+  // 2단계: 선택된 항목이 화면 안에 남도록 목록 윈도우를 이동합니다.
+  const start = sorted.length === 0
+    ? 0
+    : Math.max(0, Math.min(sel - Math.floor(VISIBLE / 2), sorted.length - VISIBLE));
   const view = sorted.slice(Math.max(0, start), Math.max(0, start) + VISIBLE);
 
   return (
-    <Box flexDirection="column" padding={1}>
+    <Box flexDirection="column" paddingX={1} paddingY={1}>
       <Box justifyContent="space-between">
         <Text bold color="yellow">
           {title}
         </Text>
+        {focused ? <Text color="green"> 활성</Text> : null}
+      </Box>
+      <Box justifyContent="space-between">
+        <Text dimColor>{rooms.length}개</Text>
         <Text color={totalUnread > 0 ? 'red' : 'gray'}>합계: {totalUnread} 읽지 않음</Text>
       </Box>
       <Box flexDirection="column" marginTop={1}>
+        {view.length === 0 ? <Text dimColor>{emptyText}</Text> : null}
         {view.map((room) => {
           const n = unread[room.id] ?? 0;
           const marker = typeMarker(room.type);
           const active = room.id === sorted[sel]?.id;
           const current = room.id === activeRoomId;
+          const lastLine = [room.lastMessage, relTime(room.lastAt)].filter(Boolean).join(' · ');
           return (
-            <Box key={room.id}>
-              <Text color={active ? 'cyan' : undefined}>{active ? '❯ ' : '  '}</Text>
-              {n > 0 ? (
-                <Text color="red">● {n} </Text>
-              ) : (
-                <Text dimColor>{'    '}</Text>
-              )}
-              <Text color={marker.color}>{marker.label} </Text>
-              <Text bold={active}>{room.name}</Text>
-              {current ? <Text color="green"> 현재</Text> : null}
-              <Text dimColor>
-                {'  '}
-                {room.lastMessage ?? ''} · {relTime(room.lastAt)}
-              </Text>
+            <Box key={room.id} flexDirection="column" marginBottom={1}>
+              <Box>
+                <Text color={active ? 'cyan' : undefined}>{active ? '> ' : '  '}</Text>
+                {n > 0 ? (
+                  <Text color="red">{clipText(`● ${n}`, 5).padEnd(5, ' ')}</Text>
+                ) : (
+                  <Text dimColor>{'     '}</Text>
+                )}
+                <Text color={marker.color}>{marker.label} </Text>
+                <Text bold={active}>{clipText(room.name, 16)}</Text>
+                {current ? <Text color="green"> 현재</Text> : null}
+              </Box>
+              <Text dimColor>    {clipText(lastLine, 34)}</Text>
             </Box>
           );
         })}

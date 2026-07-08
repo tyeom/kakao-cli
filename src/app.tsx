@@ -19,9 +19,18 @@ function getBackend(): { client: KakaoClient; auth: AuthProvider } {
   return { client: new MockKakaoClient(), auth: new MockAuthProvider() };
 }
 
-type View = 'login' | 'rooms' | 'chat' | 'room-switcher';
+type View = 'login' | 'main';
+type ActivePane = 'list' | 'chat';
+type LeftMode = 'rooms' | 'friends';
 
 const ROOM_REFRESH_MS = 5_000;
+const BRAND_LINES = [
+  ' _  __     _              _____     _ _      ____ _     ___ ',
+  '| |/ /__ _| | ____ _  ___|_   _|_ _| | | __ / ___| |   |_ _|',
+  "| ' // _` | |/ / _` |/ _ \\ | |/ _` | | |/ /| |   | |    | | ",
+  '| . \\ (_| |   < (_| | (_) || | (_| | |   < | |___| |___ | | ',
+  '|_|\\_\\__,_|_|\\_\\__,_|\\___/ |_|\\__,_|_|_|\\_\\ \\____|_____|___|',
+];
 
 function mergeRooms(current: Room[], updates: Room[]): Room[] {
   const byId = new Map(current.map((room) => [room.id, room]));
@@ -39,6 +48,40 @@ function mergeRooms(current: Room[], updates: Room[]): Room[] {
   return [...byId.values()];
 }
 
+function sortRoomsByActivity(rooms: Room[]): Room[] {
+  return [...rooms].sort((a, b) => (b.lastAt ?? 0) - (a.lastAt ?? 0));
+}
+
+function toggleLeftMode(mode: LeftMode): LeftMode {
+  return mode === 'rooms' ? 'friends' : 'rooms';
+}
+
+function BrandHeader(): React.JSX.Element {
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      {BRAND_LINES.map((line, index) => (
+        <Text key={line} color={index % 2 === 0 ? 'yellow' : 'cyan'} bold>
+          {line}
+        </Text>
+      ))}
+      <Text color="magenta" bold>
+        == Kakao Talk CLI ==
+      </Text>
+    </Box>
+  );
+}
+
+function EmptyChat(): React.JSX.Element {
+  return (
+    <Box flexDirection="column" padding={1}>
+      <Text bold color="yellow">
+        대화방을 선택하세요
+      </Text>
+      <Text dimColor>좌측 목록에서 Enter를 누르면 우측에 대화가 열립니다.</Text>
+    </Box>
+  );
+}
+
 export default function App(): React.JSX.Element {
   const { exit } = useApp();
   // 백엔드 묶음은 앱 시작 시 한 번만 만듭니다.
@@ -46,6 +89,8 @@ export default function App(): React.JSX.Element {
 
   const [booting, setBooting] = useState(true);
   const [view, setView] = useState<View>('login');
+  const [activePane, setActivePane] = useState<ActivePane>('list');
+  const [leftMode, setLeftMode] = useState<LeftMode>('rooms');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [unread, setUnread] = useState<Record<string, number>>({});
@@ -58,9 +103,13 @@ export default function App(): React.JSX.Element {
   const enterRooms = async (cred: Credential): Promise<void> => {
     await client.login(cred);
     const list = await client.listRooms();
+    const firstRoom = sortRoomsByActivity(list)[0];
     setRooms(list);
-    setUnread(Object.fromEntries(list.map((r) => [r.id, r.unreadCount])));
-    setView('rooms');
+    setUnread(Object.fromEntries(list.map((r) => [r.id, firstRoom?.id === r.id ? 0 : r.unreadCount])));
+    openRoomIdRef.current = firstRoom?.id ?? null;
+    setOpenRoomId(firstRoom?.id ?? null);
+    setActivePane('list');
+    setView('main');
   };
 
   // 시작 시 저장된 토큰이 있으면 먼저 자동 로그인을 시도합니다.
@@ -112,7 +161,7 @@ export default function App(): React.JSX.Element {
   }, [client]);
 
   useEffect(() => {
-    if (view !== 'rooms' && view !== 'room-switcher') return undefined;
+    if (view !== 'main') return undefined;
     let alive = true;
 
     const refreshRooms = async (): Promise<void> => {
@@ -147,35 +196,27 @@ export default function App(): React.JSX.Element {
     };
   }, [client, view]);
 
-  const openRoom = (roomId: string): void => {
+  const selectRoom = (roomId: string): void => {
     openRoomIdRef.current = roomId;
     setOpenRoomId(roomId);
     setUnread((u) => ({ ...u, [roomId]: 0 })); // 방을 열면 읽지 않음 카운트를 지웁니다.
-    setView('chat');
+    setActivePane('chat');
   };
 
-  const backToRooms = (): void => {
-    openRoomIdRef.current = null;
-    setOpenRoomId(null);
-    setView('rooms');
-  };
-
-  const openRoomSwitcher = (): void => {
-    if (!openRoomIdRef.current) return;
-    setView('room-switcher');
-  };
-
-  const backToOpenChat = (): void => {
-    setView(openRoomIdRef.current ? 'chat' : 'rooms');
-  };
-
-  // 전역 키: 로그인/목록에서는 q로 종료하고, 채팅에서는 Tab으로 방 전환 목록을 엽니다.
+  // 전역 키는 "현재 포커스가 어느 패널인지"만 결정합니다.
+  // 각 패널 내부의 이동/전송 키는 해당 컴포넌트가 focused 상태일 때만 처리합니다.
   useInput((input, key) => {
     if (key.ctrl && input === 'c') exit();
     else if (view === 'login' && input === 'q') exit();
-    else if (view === 'rooms' && input === 'q') exit();
-    else if (view === 'chat' && key.tab) openRoomSwitcher();
-    else if (view === 'chat' && key.escape) backToRooms();
+    else if (view === 'main' && key.tab && key.shift && activePane === 'list') {
+      setLeftMode((mode) => toggleLeftMode(mode));
+    } else if (view === 'main' && key.tab) {
+      setActivePane((pane) => (pane === 'list' && openRoomIdRef.current ? 'chat' : 'list'));
+    } else if (view === 'main' && key.escape && activePane === 'chat') {
+      setActivePane('list');
+    } else if (view === 'main' && activePane === 'list' && input === 'q') {
+      exit();
+    }
   });
 
   if (booting) {
@@ -202,25 +243,61 @@ export default function App(): React.JSX.Element {
     );
   }
 
-  if (view === 'chat') {
-    const room = rooms.find((r) => r.id === openRoomId);
-    if (room) return <ChatView client={client} room={room} />;
-  }
+  const activeRoom = rooms.find((r) => r.id === openRoomId) ?? null;
+  const leftRooms = leftMode === 'friends' ? rooms.filter((room) => room.type === 'direct') : rooms;
+  const leftTitle = leftMode === 'friends' ? '친구' : '채팅';
+  const leftFooter =
+    activePane === 'list'
+      ? leftMode === 'friends'
+        ? '↑/↓ 이동 · Enter 대화 · Tab 대화창 · Shift+Tab 채팅'
+        : '↑/↓ 이동 · Enter 열기 · Tab 대화창 · Shift+Tab 친구'
+      : 'Tab 목록 활성화';
 
-  if (view === 'room-switcher') {
-    return (
-      <RoomList
-        rooms={rooms}
-        unread={unread}
-        onOpen={openRoom}
-        title="방 전환"
-        footer="↑/↓ 이동 · Enter 전환 · Esc 채팅으로"
-        initialRoomId={openRoomId}
-        activeRoomId={openRoomId}
-        onCancel={backToOpenChat}
-      />
-    );
-  }
-
-  return <RoomList rooms={rooms} unread={unread} onOpen={openRoom} />;
+  return (
+    <Box flexDirection="column" paddingX={1} paddingY={1}>
+      <BrandHeader />
+      <Box justifyContent="space-between" marginBottom={1}>
+        <Text color={activePane === 'list' ? 'green' : 'gray'}>
+          활성 영역: {activePane === 'list' ? `좌측 ${leftTitle}` : '우측 대화방'}
+        </Text>
+        <Text dimColor>Tab 영역 전환 · Shift+Tab 목록 토글 · Ctrl+C 종료</Text>
+      </Box>
+      <Box flexDirection="row">
+        <Box
+          width={46}
+          minHeight={18}
+          marginRight={1}
+          borderStyle="round"
+          borderColor={activePane === 'list' ? 'yellow' : 'gray'}
+          flexDirection="column"
+        >
+          <RoomList
+            key={leftMode}
+            rooms={leftRooms}
+            unread={unread}
+            onOpen={selectRoom}
+            focused={activePane === 'list'}
+            title={leftTitle}
+            footer={leftFooter}
+            emptyText={leftMode === 'friends' ? '1:1 대화방이 없습니다.' : '채팅방이 없습니다.'}
+            initialRoomId={openRoomId}
+            activeRoomId={openRoomId}
+          />
+        </Box>
+        <Box
+          flexGrow={1}
+          minHeight={18}
+          borderStyle="round"
+          borderColor={activePane === 'chat' ? 'yellow' : 'gray'}
+          flexDirection="column"
+        >
+          {activeRoom ? (
+            <ChatView client={client} room={activeRoom} focused={activePane === 'chat'} />
+          ) : (
+            <EmptyChat />
+          )}
+        </Box>
+      </Box>
+    </Box>
+  );
 }

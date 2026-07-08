@@ -7,8 +7,8 @@ import JavaScriptObfuscator from 'javascript-obfuscator';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const distDir = resolve(root, 'dist');
-const rawOutfile = resolve(distDir, 'cli.raw.cjs');
-const finalOutfile = resolve(distDir, 'cli.cjs');
+const rawOutfile = resolve(distDir, 'cli.raw.js');
+const finalOutfile = resolve(distDir, 'cli.js');
 const shebang = '#!/usr/bin/env node';
 
 await rm(distDir, { recursive: true, force: true });
@@ -19,17 +19,32 @@ await esbuild.build({
   outfile: rawOutfile,
   bundle: true,
   platform: 'node',
-  format: 'cjs',
+  format: 'esm',
   target: 'node22',
   jsx: 'automatic',
   banner: { js: shebang },
   legalComments: 'none',
   minify: true,
   sourcemap: false,
+  plugins: [
+    {
+      name: 'disable-ink-devtools',
+      setup(build) {
+        build.onResolve({ filter: /^\.\/devtools\.js$/ }, (args) => {
+          if (!args.importer.includes('/ink/build/reconciler.js')) return;
+          return { path: args.path, namespace: 'ink-devtools-empty' };
+        });
+        build.onLoad({ filter: /.*/, namespace: 'ink-devtools-empty' }, () => ({
+          contents: 'export {};',
+          loader: 'js',
+        }));
+      },
+    },
+  ],
 });
 
 const raw = await readFile(rawOutfile, 'utf8');
-const source = raw.startsWith(shebang) ? raw.slice(shebang.length).trimStart() : raw;
+const source = raw.replace(/^(#![^\n]*\n)+/, '').trimStart();
 const obfuscated = JavaScriptObfuscator.obfuscate(source, {
   compact: true,
   controlFlowFlattening: false,

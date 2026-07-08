@@ -9,14 +9,19 @@ import { MockKakaoClient } from '../src/kakao/mock.js';
 
 const ENTER = '\r';
 const TAB = '\t';
+const SHIFT_TAB = '\u001B[Z';
+const SHIFT_ENTER = '\u001B[13;2u'; // Kitty 키보드 프로토콜의 Shift+Return 시퀀스입니다.
 const ESC = String.fromCharCode(27); // ESC 키
+const UP = '\u001B[A';
 const DOWN = '\u001B[B';
+const LEFT = '\u001B[D';
+const DELETE = '\u001B[3~';
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 // ink-testing-library에서는 React effect 연결보다 첫 키 입력이 먼저 도착할 수 있습니다.
 // 의미 있는 키를 보내기 전에 no-op에 가까운 Tab을 한 번 보내서 테스트 타이밍을 안정화합니다.
 function warmup(stdin: { write: (s: string) => void }): void {
-  stdin.write(TAB);
+  stdin.write(UP);
 }
 
 function show(title: string, frame: string | undefined): void {
@@ -54,25 +59,30 @@ async function main(): Promise<void> {
 
   await delay(180); // mock QR/passcode → login 완료 → RoomList
 
-  // (b) RoomList가 mock 방, 읽지 않음 배지, 오픈채팅 표시를 보여줍니다.
+  // (b) 좌측 채팅 목록과 우측 현재 대화방이 동시에 보입니다.
   frame = lastFrame();
-  show('(b) Room list', frame);
+  show('(b) Split room view', frame);
+  assert(frame?.includes('Kakao Talk CLI'), 'brand header should show Kakao Talk CLI');
+  assert(frame?.includes('활성 영역: 좌측 채팅'), 'left room list should start focused');
   assert(frame?.includes('김민준'), 'room list should show 김민준');
   assert(frame?.includes('가족 단톡방'), 'room list should show 가족 단톡방');
   assert(frame?.includes(String(topRoom.name)), `room list should show ${topRoom.name}`);
+  assert(frame?.includes('입력'), 'right chat panel should show the composer placeholder');
   assert(frame?.includes('●'), 'room list should show at least one unread badge');
   assert(frame?.includes('[오픈]'), 'room list should show the open-chat marker');
 
-  // (c) 첫 방을 열면 히스토리와 입력창이 보입니다.
+  // (c) Tab으로 우측 대화방을 활성화하면 입력이 가능해집니다.
   warmup(stdin);
   await delay(40);
-  stdin.write(ENTER); // 선택된 첫 방을 엽니다.
+  stdin.write(TAB);
   await delay(180);
   frame = lastFrame();
-  show('(c) Chat view', frame);
+  show('(c) Chat pane focused', frame);
+  assert(frame?.includes('활성 영역: 우측 대화방'), 'Tab should focus the chat pane');
   assert(frame?.includes('코딩 오픈챗'), 'chat header should show the room name');
   assert(frame?.includes('입력'), 'chat should show the composer placeholder');
   assert(frame?.includes(lastLine), `chat should show last history line "${lastLine}"`);
+  assert(/\[\d{2}:\d{2}\]/.test(frame ?? ''), 'chat messages should show HH:mm timestamps');
 
   // (d) 메시지 입력 후 Enter를 누르면 내 메시지가 로그에 표시됩니다.
   const mine = '테스트메시지ABC';
@@ -86,29 +96,70 @@ async function main(): Promise<void> {
   assert(frame?.includes(mine), 'sent message should appear in the log');
   assert(frame?.includes('나'), 'sent message should be attributed to 나');
 
-  // (e) 채팅 중 Tab으로 방 전환 목록을 열고, 다른 방으로 바로 전환합니다.
-  const switchTarget = probeRooms[1];
-  stdin.write(TAB);
-  await delay(160);
-  frame = lastFrame();
-  show('(e) Room switcher', frame);
-  assert(frame?.includes('방 전환'), 'room switcher should open from chat');
-  assert(frame?.includes('현재'), 'room switcher should mark the current room');
-
-  stdin.write(DOWN);
-  await delay(80);
+  // (d2) Shift+Enter는 전송하지 않고 입력 버퍼에 줄바꿈을 추가합니다.
+  const multiLineA = '멀티라인A';
+  const multiLineB = '멀티라인B';
+  stdin.write(multiLineA);
+  await delay(60);
+  stdin.write(SHIFT_ENTER);
+  await delay(60);
+  stdin.write(multiLineB);
+  await delay(60);
   stdin.write(ENTER);
   await delay(180);
   frame = lastFrame();
-  show('(f) After switching room', frame);
-  assert(frame?.includes(String(switchTarget.name)), `chat header should switch to ${switchTarget.name}`);
+  show('(d2) After multiline sending', frame);
+  assert(frame?.includes(`나: ${multiLineA}`), 'multiline first line should be sent');
+  assert(frame?.includes(multiLineB), 'multiline second line should be rendered');
+
+  // (d3) 방향키로 커서를 중간으로 옮긴 뒤 Delete/삽입 편집이 가능합니다.
+  stdin.write('ABCD');
+  await delay(60);
+  stdin.write(LEFT);
+  await delay(40);
+  stdin.write(LEFT);
+  await delay(40);
+  stdin.write(DELETE);
+  await delay(40);
+  stdin.write('X');
+  await delay(60);
+  stdin.write(ENTER);
+  await delay(180);
+  frame = lastFrame();
+  show('(d3) After cursor editing', frame);
+  assert(frame?.includes('나: ABXD'), 'cursor edit should delete C and insert X in the middle');
+
+  // (e) Tab으로 좌측 패널을 활성화하고, Shift+Tab으로 친구 목록으로 전환합니다.
+  stdin.write(TAB);
+  await delay(160);
+  frame = lastFrame();
+  show('(e) Back to left list', frame);
+  assert(frame?.includes('활성 영역: 좌측 채팅'), 'Tab should focus the left room list');
+
+  stdin.write(SHIFT_TAB);
+  await delay(160);
+  frame = lastFrame();
+  show('(e2) Friend list', frame);
+  assert(frame?.includes('활성 영역: 좌측 친구'), 'Shift+Tab should toggle to the friend list');
+  assert(frame?.includes('김민준'), 'friend list should show direct chat 김민준');
+
+  // (f) 친구 목록에서 Enter를 누르면 해당 1:1 대화방이 우측에 열립니다.
+  stdin.write(ENTER);
+  await delay(180);
+  frame = lastFrame();
+  show('(f) After opening friend chat', frame);
+  assert(frame?.includes('활성 영역: 우측 대화방'), 'opening a friend chat should focus the chat pane');
+  assert(frame?.includes('[1:1] 김민준'), 'chat header should switch to 김민준');
   assert(frame?.includes('입력'), 'switched chat should show the composer placeholder');
 
-  // (g) 목록으로 돌아간 뒤 mock 수신 메시지가 읽지 않음 합계를 증가시킵니다.
-  stdin.write(ESC); // chat → rooms
+  // (g) 전체 채팅 목록으로 돌아간 뒤 mock 수신 메시지가 읽지 않음 합계를 증가시킵니다.
+  stdin.write(TAB); // chat → left friend list
+  await delay(80);
+  stdin.write(SHIFT_TAB); // friend list → room list
   await delay(120);
   frame = lastFrame();
-  show('(g) Back to list', frame);
+  show('(g) Back to room list', frame);
+  assert(frame?.includes('활성 영역: 좌측 채팅'), 'room list should be active again');
   const before = totalUnread(frame);
   assert(Number.isFinite(before), 'status line total should be readable');
 
