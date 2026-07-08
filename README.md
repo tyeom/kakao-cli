@@ -6,6 +6,9 @@
 
 This is a terminal-based (CUI) KakaoTalk client powered by the LOCO protocol.
 
+## Screenshot
+<img style="width: 50%;" alt="image" src="https://arong.info/UploadImages/20260708123140_image.png" />
+
 ## Features
 
 - Login
@@ -29,11 +32,22 @@ Node.js >= 22. Ink 7 is ESM-only.
 
 ## Install
 
+Global install:
+
 ```bash
 npm i -g @arooong/kakao-cli
 ```
 
 After installation, the executable command is `kakao-cli`.
+
+Local project install:
+
+```bash
+npm i @arooong/kakao-cli
+npx kakao-cli
+```
+
+`npm kakao-cli` is not a valid npm command, and `npm run kakao-cli` only works if your own `package.json` defines that script.
 
 ## Running - Mock Mode
 
@@ -73,11 +87,18 @@ kakao-cli --live
 | `←` / `→` | Move message input cursor |
 | `Home` / `End` | Move cursor to start/end of current input line |
 | `Backspace` / `Delete` | Delete text while composing |
+| `/paste-image` or `/img` | Send the image currently in the OS clipboard (live mode only) |
 | `Tab` | Switch focus between left list and right chat pane |
 | `Shift+Tab` | Toggle chat list / friend list while left pane is active |
 | `Esc` | Move focus from right chat pane back to left list |
 | `PageUp` / `PageDown` | Scroll message log |
 | `q` / `Ctrl+C` | Quit |
+
+Clipboard image support uses OS-specific clipboard access:
+
+- macOS: built-in AppKit/JXA
+- Windows: built-in PowerShell/.NET Clipboard
+- Ubuntu/Linux: `wl-paste`, `xclip`, or `xsel` must be available depending on Wayland/X11
 
 ## Limitations & Risks
 

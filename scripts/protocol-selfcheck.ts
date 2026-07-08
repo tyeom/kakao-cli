@@ -24,11 +24,11 @@ async function main(): Promise<void> {
   // --- 1. 클라이언트 생성 + shape -----------------------------------------
   const client = new ForgeKakaoClient();
   assert(client instanceof EventEmitter, 'ForgeKakaoClient must be an EventEmitter');
-  const methods = ['login', 'listRooms', 'getMessages', 'sendMessage', 'disconnect'] as const;
+  const methods = ['login', 'listRooms', 'getMessages', 'sendMessage', 'sendClipboardImage', 'disconnect'] as const;
   for (const m of methods) {
     assert(typeof client[m] === 'function', `ForgeKakaoClient missing method: ${m}`);
   }
-  console.log('client: EventEmitter + KakaoClient methods (login/listRooms/getMessages/sendMessage/disconnect) OK');
+  console.log('client: EventEmitter + KakaoClient methods (login/listRooms/getMessages/sendMessage/sendClipboardImage/disconnect) OK');
 
   // --- 2. TEMP 파일 기반 인증 persistence --------------------------------
   const stamp = `${process.pid}-${Date.now()}`;

@@ -35,6 +35,8 @@ export interface KakaoClient extends EventEmitter {
   listRooms(): Promise<Room[]>;
   getMessages(roomId: string, opts?: { limit?: number; before?: string }): Promise<Message[]>;
   sendMessage(roomId: string, text: string): Promise<void>;
+  // live client 전용입니다. mock client는 구현하지 않아도 UI가 기능 지원 여부를 확인합니다.
+  sendClipboardImage?(roomId: string): Promise<void>;
   disconnect(): Promise<void>;
 }
 

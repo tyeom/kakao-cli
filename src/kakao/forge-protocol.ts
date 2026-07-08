@@ -509,6 +509,45 @@ export class CarriageClient extends LocoRequestClient {
     });
   }
 
+  writeEncrypted(data: Buffer): Promise<void> {
+    if (!this.socket || this.socket.destroyed || !this.socket.writable) {
+      return Promise.reject(new Error('Carriage not connected'));
+    }
+    const encrypted = this.crypto.encrypt(data);
+    const socket = this.socket;
+    return new Promise((resolve, reject) => {
+      socket.write(encrypted, (err) => {
+        if (err) {
+          reject(err);
+          if (this.socket === socket && !socket.destroyed) socket.destroy();
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+
+  end(timeoutMs = 5_000): Promise<void> {
+    this.stopPing();
+    const socket = this.socket;
+    if (!socket) return Promise.resolve();
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        if (this.socket === socket) {
+          socket.destroy();
+          this.socket = null;
+        }
+        resolve();
+      }, timeoutMs);
+      socket.once('close', () => {
+        clearTimeout(timer);
+        if (this.socket === socket) this.socket = null;
+        resolve();
+      });
+      socket.end();
+    });
+  }
+
   loginList(cred: { userId: string; deviceUUID: string; accessToken: string }): Promise<LocoPacket> {
     return this.request('LOGINLIST', {
       os: KAKAO_OS,

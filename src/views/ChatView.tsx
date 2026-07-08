@@ -259,6 +259,17 @@ export default function ChatView({ client, room, focused = true }: Props): React
     if (!trimmed) return;
     stick.current = true;
     setSendError(null);
+    if (trimmed === '/paste-image' || trimmed === '/img') {
+      if (!client.sendClipboardImage) {
+        setSendError('클립보드 이미지 전송은 live 모드에서만 지원됩니다.');
+        return;
+      }
+      void client.sendClipboardImage(room.id).catch((err) => {
+        // 이미지 업로드 실패도 텍스트 전송 실패와 동일하게 현재 화면에만 표시합니다.
+        setSendError(err instanceof Error ? err.message : String(err));
+      });
+      return;
+    }
     void client.sendMessage(room.id, trimmed).catch((err) => {
       // 전송 실패는 프로세스를 죽이지 않고 현재 채팅 화면에만 표시합니다.
       setSendError(err instanceof Error ? err.message : String(err));
@@ -335,7 +346,8 @@ export default function ChatView({ client, room, focused = true }: Props): React
             </Box>
           ))
         )}
-        <Text dimColor>Enter 전송 · Shift+Enter 줄바꿈 · ←/→ 커서 · Backspace/Delete 삭제</Text>
+        <Text dimColor>Enter 전송 · Shift+Enter 줄바꿈 · ←/→ 커서</Text>
+        <Text dimColor>Backspace/Delete 삭제 · /paste-image 이미지</Text>
       </Box>
       {sendError ? (
         <Box marginTop={1}>

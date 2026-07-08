@@ -8,6 +8,8 @@ import {
   idToString,
   toLong,
 } from './forge-protocol.js';
+import { readClipboardImageToTempFile } from './clipboard-image.js';
+import { uploadPhotoFromPath } from './media-upload.js';
 
 const DEFAULT_MESSAGE_LIMIT = 100;
 const SEND_THROTTLE_MS = 400;
@@ -162,6 +164,52 @@ export class ForgeKakaoClient extends EventEmitter implements KakaoClient {
     const serverRoomId = this.resolveRoomId(roomId);
     const msgId = this.nextRoomMsgId(serverRoomId);
     await this.sendMessageAttempt(roomId, text, msgId, true);
+  }
+
+  async sendClipboardImage(roomId: string): Promise<void> {
+    const image = await readClipboardImageToTempFile();
+    try {
+      await this.sendImageFile(roomId, image.path, image.filename);
+    } finally {
+      await image.cleanup();
+    }
+  }
+
+  private async sendImageFile(roomId: string, filePath: string, filename?: string): Promise<void> {
+    const carriage = await this.requireConnected();
+    const wait = this.lastSendAt + SEND_THROTTLE_MS - Date.now();
+    if (wait > 0) await delay(wait);
+    this.lastSendAt = Date.now();
+
+    const serverRoomId = this.resolveRoomId(roomId);
+    const result = await uploadPhotoFromPath({
+      carriage,
+      chatId: serverRoomId,
+      userId: this.myUserId,
+      filePath,
+      filename,
+    });
+
+    const log = result.chatLog || result.complete?.chatLog || null;
+    const msg = log
+      ? this.chatLogToMessage(roomId, {
+          ...log,
+          chatId: roomId,
+          authorId: log.authorId || this.myUserId,
+          msg: log.msg || '[사진]',
+        })
+      : {
+          id: `${Date.now()}-${result.accessKey}`,
+          roomId,
+          senderId: this.myUserId,
+          senderName: '나',
+          text: '[사진]',
+          at: Date.now(),
+          isMine: true,
+        };
+
+    this.updateRoomFromMessage(msg);
+    this.emit('chat', msg);
   }
 
   private async sendMessageAttempt(roomId: string, text: string, msgId: number, allowRetry: boolean): Promise<void> {
@@ -1021,7 +1069,18 @@ function openLinkIdOf(chat: any): string {
 
 function textOf(log: any): string {
   if (!log) return '';
-  return String(log.message || log.msg || log.text || log.content || log.attachment?.text || '');
+  const text = String(log.message || log.msg || log.text || log.content || log.attachment?.text || '');
+  if (text) return text;
+
+  const type = Number(idToString(log.type || log.msgType || log.t || 0));
+  const attachment = parseMaybeJson(log.attachment ?? log.attachments ?? log.extra);
+  const mime = String(attachment?.mt || attachment?.mime || '').toLowerCase();
+  if (type === 2 || mime.startsWith('image/')) return '[사진]';
+  if (type === 3 || mime.startsWith('video/')) return '[동영상]';
+  if (type === 5 || mime.startsWith('audio/')) return '[음성]';
+  if (type === 18 || attachment?.name || attachment?.filename) return '[파일]';
+
+  return '';
 }
 
 function displayMemberNamesOf(chat: any): string[] {
