@@ -79,49 +79,6 @@ kakao-cli --live
 | `PageUp` / `PageDown` | Scroll message log |
 | `q` / `Ctrl+C` | Quit |
 
-## Development
-
-```bash
-pnpm install
-pnpm run start       # mock mode
-pnpm run start:live  # live mode
-```
-
-Validation:
-
-```bash
-pnpm run typecheck
-pnpm run smoke
-pnpm run check:protocol
-pnpm run check:ui
-```
-
-## npm Publish
-
-The npm package is bundled into `dist/cli.js` with esbuild and obfuscated with `javascript-obfuscator`. The tarball includes `dist/cli.js`, `README.md`, `THIRD_PARTY_NOTICES.md`, and `package.json`.
-
-```bash
-pnpm run build
-npm pack --dry-run
-pnpm run publish:npm
-```
-
-If your npm account uses browser or biometric authentication, press Enter at the OTP prompt and complete the npm browser flow.
-
-If you use an authenticator app OTP:
-
-```bash
-pnpm run publish:npm -- --otp 123456
-```
-
-If you use an automation token, create a granular access token with `Read and write` permission and `Bypass two-factor authentication` enabled:
-
-```bash
-NPM_TOKEN=npm_xxx pnpm run publish:npm
-```
-
-Already published versions cannot be published again. Bump `package.json` version before each new npm release.
-
 ## Limitations & Risks
 
 **[English]**

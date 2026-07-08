@@ -1,6 +1,6 @@
 {
   "name": "@arooong/kakao-cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Terminal (CUI) KakaoTalk client built with ink (React for CLI)",
   "type": "module",
   "private": false,
