@@ -1,4 +1,4 @@
-<img width="602" height="86" alt="image" src="https://github.com/user-attachments/assets/43db3f96-bf95-498a-a65b-27e4de1880b4" />
+<img width="602" height="86" alt="image" src="https://arong.info/UploadImages/20260708115539_image.png" />
 
 > KakaoTalk CLI brings support to otherwise unsupported operating systems, such as Ubuntu.
 
