@@ -77,6 +77,97 @@ kakao-cli --live
 - 인증이 끝나면 자격 증명이 `auth.json`에 저장됩니다.
 - 저장된 인증 정보가 만료되었거나 실패하면 `auth.json`을 지우고 다시 로그인 화면으로 돌아갑니다.
 
+## Running - API Mode
+
+API mode starts an HTTP/WebSocket server. It uses live mode by default because the API is intended to expose real KakaoTalk access.
+
+```bash
+kakao-cli --api-mode 8880
+```
+
+Mock API server for local tests:
+
+```bash
+kakao-cli --api-mode 8880 --mock
+```
+
+By default the API server binds to `127.0.0.1`. To expose it on another interface:
+
+```bash
+KAKAO_API_HOST=0.0.0.0 kakao-cli --api-mode 8880
+```
+
+Sample HTML:
+
+- Served from the API server root: `http://localhost:8880/`
+- Included file: `examples/api-test.html`
+
+### API
+
+Health:
+
+```http
+GET /api/health
+```
+
+Friend list:
+
+```http
+GET /api/friends
+```
+
+The current client does not have a separate LOCO contacts API, so this returns 1:1 chat rooms as friend entries.
+
+Chat room list:
+
+```http
+GET /api/rooms
+```
+
+Recent messages:
+
+```http
+GET /api/rooms/{roomId}/messages?limit=30
+```
+
+Send text message:
+
+```http
+POST /api/rooms/{roomId}/messages
+Content-Type: application/json
+
+{ "message": "hello" }
+```
+
+WebSocket real-time messages:
+
+```text
+ws://localhost:8880/ws/rooms/{roomId}
+```
+
+Message event shape:
+
+```json
+{
+  "type": "message",
+  "room": {
+    "id": "123",
+    "name": "Room",
+    "type": "direct",
+    "typeLabel": "1:1"
+  },
+  "message": {
+    "roomType": "1:1",
+    "time": "2026-07-08T00:00:00.000Z",
+    "timestamp": 1783440000000,
+    "nickname": "홍길동",
+    "message": "hello"
+  }
+}
+```
+
+`typeLabel` / `roomType` values are `1:1`, `Group`, or `오픈`.
+
 ## Controls
 
 | Key | Action |
@@ -105,12 +196,12 @@ Clipboard image support uses OS-specific clipboard access:
 **[English]**
 - Connection stability is not guaranteed. Kakao may change the unofficial LOCO/QR authentication flow at any time.
 - There is a risk of permanent account suspension.
-- Text-only support. Deep history paging is not supported.
+- Text chat support and clipboard image sending are implemented. Deep history paging is limited.
 
 **[한글]**
 - 연결이 안 될 수 있습니다. 카카오는 비공식 LOCO/QR 인증 흐름을 언제든 변경할 수 있습니다.
 - 계정 영구 정지 위험이 있습니다.
-- 텍스트 메시지 전용입니다. 깊은 히스토리 페이징은 미지원입니다.
+- 텍스트 채팅과 클립보드 이미지 전송을 지원합니다. 깊은 히스토리 페이징은 제한적입니다.
 
 ## License
 

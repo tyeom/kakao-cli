@@ -1,6 +1,6 @@
 {
   "name": "@arooong/kakao-cli",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Terminal (CUI) KakaoTalk client built with ink (React for CLI)",
   "type": "module",
   "private": false,
@@ -17,6 +17,7 @@
   },
   "files": [
     "dist/",
+    "examples/",
     "README.md",
     "THIRD_PARTY_NOTICES.md"
   ],
@@ -43,6 +44,7 @@
     "dev": "tsx watch src/cli.tsx",
     "start": "tsx src/cli.tsx",
     "start:live": "tsx src/cli.tsx --live",
+    "start:api": "tsx src/cli.tsx --api-mode 8880",
     "start:bundle": "node dist/cli.js",
     "start:bundle:live": "node dist/cli.js --live",
     "typecheck": "tsc --noEmit",

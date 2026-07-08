@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kakao CLI API Sample</title>
+  <style>
+    body {
+      margin: 24px;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #222;
+      background: #f8f7f1;
+    }
+    pre {
+      padding: 14px;
+      overflow: auto;
+      background: #fee500;
+      border: 1px solid #d4c200;
+      border-radius: 8px;
+      line-height: 1.1;
+    }
+    main {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 14px;
+    }
+    section {
+      padding: 14px;
+      background: #fff;
+      border: 1px solid #d8d4c8;
+      border-radius: 8px;
+    }
+    input, textarea, button {
+      font: inherit;
+    }
+    input, textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 9px 10px;
+      border: 1px solid #cfc9ba;
+      border-radius: 6px;
+    }
+    textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+    button {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border: 1px solid #bdb7a9;
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+    }
+    button.primary {
+      background: #fee500;
+      border-color: #d4c200;
+      font-weight: 700;
+    }
+    .room {
+      margin-top: 8px;
+      padding: 10px;
+      border: 1px solid #e4dfd3;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .room.active {
+      border-color: #1d73d4;
+    }
+    .meta {
+      color: #6b6f76;
+      font-size: 12px;
+    }
+    #messages {
+      height: 360px;
+      overflow: auto;
+      border: 1px solid #e4dfd3;
+      border-radius: 6px;
+      padding: 10px;
+      background: #fbfaf5;
+    }
+    .msg {
+      padding: 7px 0;
+      border-bottom: 1px solid #ece8dc;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .msg:last-child {
+      border-bottom: 0;
+    }
+    .nick {
+      color: #1d73d4;
+      font-weight: 700;
+    }
+    @media (max-width: 760px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+<pre> _  __     _              _____     _ _      ____ _     ___
+| |/ /__ _| | ____ _  ___|_   _|_ _| | | __ / ___| |   |_ _|
+| ' // _` | |/ / _` |/ _ \ | |/ _` | | |/ /| |   | |    | |
+| . \ (_| |   < (_| | (_) || | (_| | |   < | |___| |___ | |
+|_|\_\__,_|_|\_\__,_|\___/ |_|\__,_|_|_|\_\ \____|_____|___|
+== Kakao Talk CLI API Sample ==</pre>
+
+<main>
+  <section>
+    <label>API URL</label>
+    <input id="apiUrl" value="http://localhost:8880" />
+    <button id="loadRooms" class="primary">채팅방 목록 요청</button>
+    <button id="loadFriends">친구 목록 요청</button>
+    <div id="rooms"></div>
+  </section>
+  <section>
+    <h3 id="title">대화방을 선택하세요</h3>
+    <div id="messages"></div>
+    <textarea id="text" placeholder="보낼 메시지"></textarea>
+    <button id="send" class="primary">HTTP POST로 전송</button>
+  </section>
+</main>
+
+<script>
+  let selectedRoom = null;
+  let ws = null;
+
+  const $ = (id) => document.getElementById(id);
+
+  function apiBase() {
+    return $('apiUrl').value.replace(/\/+$/, '');
+  }
+
+  function wsBase() {
+    const url = new URL(apiBase());
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    return url.toString().replace(/\/+$/, '');
+  }
+
+  async function request(path, options = {}) {
+    const res = await fetch(apiBase() + path, {
+      ...options,
+      headers: { 'content-type': 'application/json', ...(options.headers || {}) },
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error?.message || res.statusText);
+    return body;
+  }
+
+  function renderRooms(items, fromFriends = false) {
+    $('rooms').innerHTML = '';
+    for (const item of items) {
+      const roomId = item.roomId || item.id;
+      const div = document.createElement('div');
+      div.className = 'room' + (selectedRoom?.id === roomId ? ' active' : '');
+      div.innerHTML = '<strong></strong><div class="meta"></div>';
+      div.querySelector('strong').textContent = item.name || item.nickname || roomId;
+      div.querySelector('.meta').textContent = `${item.typeLabel || item.type} · ${roomId}${fromFriends ? ' · friend' : ''}`;
+      div.onclick = () => openRoom({ id: roomId, name: item.name || item.nickname || roomId, typeLabel: item.typeLabel });
+      $('rooms').appendChild(div);
+    }
+  }
+
+  async function loadRooms() {
+    const body = await request('/api/rooms');
+    renderRooms(body.rooms || []);
+  }
+
+  async function loadFriends() {
+    const body = await request('/api/friends');
+    renderRooms(body.friends || [], true);
+  }
+
+  async function openRoom(room) {
+    selectedRoom = room;
+    $('title').textContent = `${room.name} (${room.typeLabel || ''})`;
+    $('messages').innerHTML = '';
+    try {
+      const body = await request(`/api/rooms/${encodeURIComponent(room.id)}/messages?limit=30`);
+      for (const msg of body.messages || []) appendMessage(msg);
+    } catch (err) {
+      appendSystem('최근 대화 요청 실패: ' + err.message);
+    }
+    connectWs(room.id);
+  }
+
+  function connectWs(roomId) {
+    if (ws) ws.close();
+    ws = new WebSocket(`${wsBase()}/ws/rooms/${encodeURIComponent(roomId)}`);
+    ws.onopen = () => appendSystem('WebSocket 연결됨');
+    ws.onclose = () => appendSystem('WebSocket 종료');
+    ws.onerror = () => appendSystem('WebSocket 오류');
+    ws.onmessage = (event) => {
+      const payload = JSON.parse(event.data);
+      if (payload.type === 'message') appendMessage(payload.message);
+      if (payload.type === 'ready') appendSystem('수신 준비 완료');
+    };
+  }
+
+  function appendSystem(text) {
+    const div = document.createElement('div');
+    div.className = 'msg meta';
+    div.textContent = text;
+    $('messages').appendChild(div);
+    $('messages').scrollTop = $('messages').scrollHeight;
+  }
+
+  function appendMessage(msg) {
+    const div = document.createElement('div');
+    div.className = 'msg';
+    const time = new Date(msg.timestamp || msg.time).toLocaleTimeString();
+    div.innerHTML = '<span class="nick"></span> <span class="meta"></span><div></div>';
+    div.querySelector('.nick').textContent = msg.nickname || '(알 수 없음)';
+    div.querySelector('.meta').textContent = `${time} · ${msg.roomType || ''}`;
+    div.querySelector('div').textContent = msg.message || '';
+    $('messages').appendChild(div);
+    $('messages').scrollTop = $('messages').scrollHeight;
+  }
+
+  async function sendMessage() {
+    if (!selectedRoom) return appendSystem('대화방을 먼저 선택하세요.');
+    const message = $('text').value;
+    if (!message.trim()) return;
+    await request(`/api/rooms/${encodeURIComponent(selectedRoom.id)}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    });
+    $('text').value = '';
+  }
+
+  $('loadRooms').onclick = () => loadRooms().catch((err) => appendSystem(err.message));
+  $('loadFriends').onclick = () => loadFriends().catch((err) => appendSystem(err.message));
+  $('send').onclick = () => sendMessage().catch((err) => appendSystem('전송 실패: ' + err.message));
+  loadRooms().catch((err) => appendSystem(err.message));
+</script>
+</body>
+</html>
