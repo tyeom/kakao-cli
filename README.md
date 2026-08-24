@@ -1,5 +1,8 @@
 <img width="602" height="86" alt="image" src="https://arong.info/UploadImages/20260708115539_image.png" />
 
+[![npm version](https://img.shields.io/npm/v/%40arooong%2Fkakao-cli?logo=npm)](https://www.npmjs.com/package/@arooong/kakao-cli)
+[![npm downloads](https://img.shields.io/npm/dm/%40arooong%2Fkakao-cli?logo=npm)](https://www.npmjs.com/package/@arooong/kakao-cli)
+
 > KakaoTalk CLI brings support to otherwise unsupported operating systems, such as Ubuntu.
 
 # kakao-cli

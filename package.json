@@ -1,7 +1,15 @@
 {
   "name": "@arooong/kakao-cli",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Terminal (CUI) KakaoTalk client built with ink (React for CLI)",
+  "homepage": "https://github.com/tyeom/kakao-cli#readme",
+  "bugs": {
+    "url": "https://github.com/tyeom/kakao-cli/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tyeom/kakao-cli.git"
+  },
   "type": "module",
   "private": false,
   "license": "UNLICENSED",
