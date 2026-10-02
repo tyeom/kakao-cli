@@ -19,6 +19,10 @@ const CLIENT_MSG_ID_STEP = 100;
 const RECONNECT_MIN_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 const PING_INTERVAL_MS = Number(process.env.KAKAO_PING_INTERVAL_MS || 30_000);
+// MEMBER 요청으로 한 번에 조회할 멤버 수와, 프로필 조회 실패 캐시 유지 시간입니다.
+const MEMBER_BATCH_SIZE = 100;
+const MEMBER_ENRICH_LIMIT = 500;
+const MEMBER_PROFILE_MISS_TTL_MS = 5 * 60 * 1000;
 
 const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -62,7 +66,10 @@ export class ForgeKakaoClient extends EventEmitter implements KakaoClient {
   private readonly serverRoomToUiRoom = new Map<string, string>();
   private readonly openLinkNames = new Map<string, string>();
   private readonly memberNames = new Map<string, Map<string, string>>();
+  private readonly otherSendersByRoom = new Map<string, Set<string>>();
   private readonly memberListFetches = new Map<string, Promise<string[]>>();
+  private readonly memberProfileFetches = new Map<string, Promise<string>>();
+  private readonly memberProfileMisses = new Map<string, number>();
   private readonly pendingWriteAcks: PendingWriteAck[] = [];
   private readonly roomMsgIds = new Map<string, number>();
   private pushSyncInFlight = false;
@@ -440,7 +447,7 @@ export class ForgeKakaoClient extends EventEmitter implements KakaoClient {
     for (const log of directLogs) {
       const serverRoomId = idToString(log?.chatId || log?.chatRoomId || log?.roomId || log?.c);
       if (!serverRoomId) continue;
-      this.emitChatLog(this.toUiRoomId(serverRoomId), log);
+      await this.emitChatLog(this.toUiRoomId(serverRoomId), log);
     }
 
     if (this.pushSyncInFlight) return;
@@ -494,7 +501,7 @@ export class ForgeKakaoClient extends EventEmitter implements KakaoClient {
     }
 
     for (const { roomId, log } of lastLogs) {
-      this.emitChatLog(roomId, log);
+      await this.emitChatLog(roomId, log);
     }
 
     return changedRooms;
@@ -517,10 +524,12 @@ export class ForgeKakaoClient extends EventEmitter implements KakaoClient {
     return logs;
   }
 
-  private emitChatLog(roomId: string, log: any): void {
+  private async emitChatLog(roomId: string, log: any): Promise<void> {
     if (!roomId || !log) return;
 
     // BLSYNC/LCHATLIST/SYNCMSG는 같은 로그를 다른 형태로 줄 수 있어 Message id 기준 중복은 UI에서 제거합니다.
+    // 또한 실시간 MSG가 아닌 동기화 경로에서도 이름 없는 발신자를 방출 전에 보강합니다.
+    await this.resolveMissingSenderName(roomId, log);
     const msg = this.chatLogToMessage(roomId, {
       ...log,
       chatId: roomId,
@@ -552,8 +561,15 @@ export class ForgeKakaoClient extends EventEmitter implements KakaoClient {
     const displayMembers = displayMemberNamesOf(chat);
     const rawTitle = titleOf(chat);
     const memberTitle = displayMembers.join(', ');
-    const previousName = this.rooms.get(id)?.name || '';
-    const type = roomTypeOf(chat, displayMembers.length);
+    const previousRoom = this.rooms.get(id);
+    const previousName = previousRoom?.name || '';
+    // 방 타입은 생성 후 바뀌지 않습니다. 증분 동기화(LCHATLIST 등) 응답에는 그룹/오픈 플래그가
+    // 빠져 있을 수 있어서, 이미 group/open으로 알고 있던 방을 direct로 잘못 강등하지 않도록 유지합니다.
+    const detectedType = roomTypeOf(chat, displayMembers.length);
+    const type =
+      detectedType === 'direct' && previousRoom && previousRoom.type !== 'direct'
+        ? previousRoom.type
+        : detectedType;
     const openLinkId = openLinkIdOf(chat) || this.rooms.get(id)?.openLinkId || '';
     const openLinkName = openLinkId ? this.openLinkNames.get(openLinkId) || '' : '';
     const title =
@@ -586,6 +602,7 @@ export class ForgeKakaoClient extends EventEmitter implements KakaoClient {
 
   private chatLogToMessage(roomId: string, log: any): Message {
     const senderId = senderIdOf(log);
+    this.noteOtherSender(roomId, senderId);
     const senderName = this.resolveSenderName(roomId, log, senderId);
     return {
       id: idToString(log.logId || log.msgId || log.id || this.nextClientMsgId()),
@@ -669,6 +686,7 @@ export class ForgeKakaoClient extends EventEmitter implements KakaoClient {
   private async fetchMemberNamesNow(roomId: string): Promise<string[]> {
     const carriage = this.require();
     const names = new Set<string>();
+    const memberIds = new Set<string>();
     let token: string | number = 0;
 
     // KakaoForge와 같이 token 기반 페이지를 따르되, 터미널 목록 표시 목적이라 최대 5페이지로 제한합니다.
@@ -676,14 +694,20 @@ export class ForgeKakaoClient extends EventEmitter implements KakaoClient {
       const res = await carriage.memList(roomId, token);
       if (res.status !== 0) break;
       const body = res.body || {};
+      // MEMLIST 응답은 버전/방 타입에 따라 members(객체 목록)일 수도, memberIds(id만)일 수도 있습니다.
       const members = body.members || body.memberList || body.memList || [];
       if (Array.isArray(members)) {
         this.cacheMembers(roomId, members);
         for (const member of members) {
-          const userId = idToString(member?.userId || member?.id || member?.memberId || member?.user_id);
-          if (userId && userId === this.myUserId) continue;
-          const name = memberNameOf(member);
-          if (name) names.add(name);
+          const userId = memberIdOf(member);
+          if (!userId || userId === this.myUserId) continue;
+          memberIds.add(userId);
+        }
+      }
+      if (Array.isArray(body.memberIds)) {
+        for (const raw of body.memberIds) {
+          const userId = idToString(raw);
+          if (userId && userId !== this.myUserId) memberIds.add(userId);
         }
       }
 
@@ -692,7 +716,59 @@ export class ForgeKakaoClient extends EventEmitter implements KakaoClient {
       token = nextToken;
     }
 
+    // 다자간 방의 MEMLIST는 이름 없이 id만 내려오므로, 캐시에 없는 멤버는 MEMBER로 프로필을 조회합니다.
+    const missing = [...memberIds]
+      .filter((id) => !this.cachedMemberName(roomId, id))
+      .slice(0, MEMBER_ENRICH_LIMIT);
+    if (missing.length > 0) await this.enrichMemberNames(roomId, missing);
+
+    for (const id of memberIds) {
+      const name = this.cachedMemberName(roomId, id);
+      if (name) names.add(name);
+    }
+
     return [...names];
+  }
+
+  private async enrichMemberNames(roomId: string, memberIds: string[]): Promise<void> {
+    const carriage = this.carriage;
+    if (!carriage || memberIds.length === 0) return;
+
+    const serverRoomId = this.resolveRoomId(roomId);
+    for (let i = 0; i < memberIds.length; i += MEMBER_BATCH_SIZE) {
+      const chunk = memberIds.slice(i, i + MEMBER_BATCH_SIZE);
+      try {
+        const res = await carriage.member(serverRoomId, chunk);
+        if (res.status !== 0) continue;
+        const members = res.body?.members;
+        if (Array.isArray(members)) this.cacheMembers(roomId, members);
+      } catch (err) {
+        this.emitError(err instanceof Error ? err : new Error(String(err)));
+      }
+    }
+  }
+
+  private async fetchSenderProfileName(roomId: string, senderId: string): Promise<string> {
+    if (!senderId) return '';
+    const key = `${this.resolveRoomId(roomId)}:${senderId}`;
+    const inFlight = this.memberProfileFetches.get(key);
+    if (inFlight) return inFlight;
+
+    const task = (async (): Promise<string> => {
+      const retryAt = this.memberProfileMisses.get(key) || 0;
+      if (retryAt > Date.now()) return this.cachedMemberName(roomId, senderId);
+
+      await this.enrichMemberNames(roomId, [senderId]);
+      const name = this.cachedMemberName(roomId, senderId);
+      if (name) this.memberProfileMisses.delete(key);
+      else this.memberProfileMisses.set(key, Date.now() + MEMBER_PROFILE_MISS_TTL_MS);
+      return name;
+    })().finally(() => {
+      this.memberProfileFetches.delete(key);
+    });
+
+    this.memberProfileFetches.set(key, task);
+    return task;
   }
 
   private async resolveMissingSenderName(roomId: string, log: any): Promise<void> {
@@ -702,11 +778,22 @@ export class ForgeKakaoClient extends EventEmitter implements KakaoClient {
     if (this.cachedMemberName(roomId, senderId)) return;
 
     const room = this.rooms.get(roomId);
-    if (room?.type === 'direct' && !isFallbackRoomName(room.name, room.id)) return;
+    // 1:1로 확인된 방(나 외 멤버가 1명)만 방 이름 대체를 신뢰하고, 다자간 정황이 있으면
+    // 이름 없는 발신자도 멤버 목록 조회로 실제 이름을 확보합니다.
+    if (
+      room?.type === 'direct' &&
+      this.otherSenderCount(roomId) < 2 &&
+      this.cachedOtherMemberCount(roomId) < 2 &&
+      !isFallbackRoomName(room.name, room.id)
+    )
+      return;
 
     try {
       // MSG 패킷에 이름이 없으면 방 멤버 목록에서 authorId -> 닉네임을 보강합니다.
       await this.fetchMemberNames(roomId);
+      // MEMLIST가 이름 없이 id만 주는 방에서는 발신자 프로필(MEMBER)을 직접 조회합니다.
+      if (!this.cachedMemberName(roomId, senderId))
+        await this.fetchSenderProfileName(roomId, senderId);
     } catch (err) {
       this.emitError(err instanceof Error ? err : new Error(String(err)));
     }
@@ -720,11 +807,53 @@ export class ForgeKakaoClient extends EventEmitter implements KakaoClient {
     if (cached) return cached;
 
     const room = this.rooms.get(roomId);
-    if (senderId && senderId !== this.myUserId && room?.type === 'direct' && !isFallbackRoomName(room.name, room.id)) {
+    // 1:1 방은 방 이름이 곧 상대방 이름이라 미확인 이름의 대체값으로 쓸 수 있지만,
+    // 나 외 발신자/멤버가 2명 이상 확인된 방은 1:1이 아니므로 방 이름을 발신자 이름으로 쓰지 않습니다.
+    if (
+      senderId &&
+      senderId !== this.myUserId &&
+      room?.type === 'direct' &&
+      this.otherSenderCount(roomId) < 2 &&
+      this.cachedOtherMemberCount(roomId) < 2 &&
+      !isFallbackRoomName(room.name, room.id)
+    ) {
       return room.name;
     }
 
     return senderId === this.myUserId ? '나' : '(알 수 없음)';
+  }
+
+  private noteOtherSender(roomId: string, senderId: string): void {
+    if (!roomId || !senderId || senderId === this.myUserId) return;
+
+    const senders = this.otherSendersByRoom.get(roomId) || new Set<string>();
+    senders.add(senderId);
+    this.otherSendersByRoom.set(roomId, senders);
+
+    // 1:1 방인데 나 외 발신자가 2명 이상이면 실제로는 다자간 방이므로 group으로 승격합니다.
+    // (증분 동기화에서 그룹 플래그를 놓쳐 direct로 잘못 분류된 방을 실시간 트래픽으로 교정합니다.)
+    const room = this.rooms.get(roomId);
+    if (senders.size >= 2 && room && room.type === 'direct') {
+      const promoted: RoomCacheEntry = { ...room, type: 'group' };
+      this.rooms.set(roomId, promoted);
+      this.emit('room-update', promoted);
+    }
+  }
+
+  private otherSenderCount(roomId: string): number {
+    return this.otherSendersByRoom.get(roomId)?.size || 0;
+  }
+
+  private cachedOtherMemberCount(roomId: string): number {
+    const others = new Set<string>();
+    for (const key of this.memberCacheKeys(roomId)) {
+      const map = this.memberNames.get(key);
+      if (!map) continue;
+      for (const userId of map.keys()) {
+        if (userId && userId !== this.myUserId) others.add(userId);
+      }
+    }
+    return others.size;
   }
 
   private cacheMembersFromChat(roomId: string, chat: any): void {
@@ -736,7 +865,7 @@ export class ForgeKakaoClient extends EventEmitter implements KakaoClient {
 
   private cacheMembers(roomId: string, members: any[]): void {
     for (const member of members) {
-      const userId = idToString(member?.userId || member?.id || member?.memberId || member?.user_id);
+      const userId = memberIdOf(member);
       const name = memberNameOf(member);
       if (userId && name) this.cacheMemberName(roomId, userId, name);
     }
@@ -1044,7 +1173,18 @@ function roomTypeOf(chat: any, displayMemberCount: number): RoomType {
   ) {
     return 'open';
   }
-  if (chat?.isGroupChat || displayMemberCount > 1 || typeText.includes('group')) return 'group';
+  // 그룹 여부 플래그는 서버 응답(로그인/증분 동기화)마다 포함 여부가 달라서
+  // 알려진 동의어를 폭넓게 확인합니다. (KakaoForge resolveRoomFlags와 동일한 기준)
+  if (
+    chat?.isGroupChat ||
+    chat?.isMultiChat === true ||
+    chat?.multiChat === true ||
+    chat?.isGroup === true ||
+    chat?.directChat === false ||
+    displayMemberCount > 1 ||
+    /multi|group|moim/.test(typeText)
+  )
+    return 'group';
   return 'direct';
 }
 
@@ -1130,6 +1270,14 @@ function compareId(a: string, b: string): number {
   } catch {
     return a.localeCompare(b);
   }
+}
+
+function memberIdOf(member: any): string {
+  if (member === null || member === undefined) return '';
+  if (typeof member === 'object')
+    return idToString(member?.userId || member?.id || member?.memberId || member?.user_id);
+  // MEMLIST 응답처럼 id 값만(Long/문자열) 내려오는 경우도 처리합니다.
+  return idToString(member);
 }
 
 function memberNameOf(member: any): string {

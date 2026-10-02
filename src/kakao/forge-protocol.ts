@@ -588,6 +588,14 @@ export class CarriageClient extends LocoRequestClient {
     });
   }
 
+  member(chatId: string, memberIds: Array<string | number | Long>): Promise<LocoPacket> {
+    // MEMLIST가 id만 내려주는 방에서 이름(닉네임)을 얻는 유일한 경로입니다.
+    return this.request('MEMBER', {
+      chatId: toLong(chatId),
+      memberIds: memberIds.map((id) => toLong(id)),
+    });
+  }
+
   infoLink(linkIds: Array<string | number | Long>): Promise<LocoPacket> {
     return this.request('INFOLINK', {
       lis: linkIds.map((id) => toLong(id)),
