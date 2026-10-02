@@ -38,7 +38,8 @@ await esbuild.build({
       name: 'disable-ink-devtools',
       setup(build) {
         build.onResolve({ filter: /^\.\/devtools\.js$/ }, (args) => {
-          if (!args.importer.includes('/ink/build/reconciler.js')) return;
+          // Windows에서는 importer 경로가 백슬래시로 내려오므로 구분자에 관계없이 매칭합니다.
+          if (!/[/\\]ink[/\\]build[/\\]reconciler\.js$/.test(args.importer)) return;
           return { path: args.path, namespace: 'ink-devtools-empty' };
         });
         build.onLoad({ filter: /.*/, namespace: 'ink-devtools-empty' }, () => ({
